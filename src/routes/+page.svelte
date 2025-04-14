@@ -4,19 +4,27 @@
     import { createGame, joinGame, gameId, error, playerName, opponentName, playerSymbol, players } from '$lib/sockets';
     
     let gameIdInput: string = '';
-    let playerNameInput: string = '';
+    let createPlayerNameInput: string = ''; // Separate variable for Create Game form
+    let joinPlayerNameInput: string = '';   // Separate variable for Join Game form
+    let isJoining: boolean = false;         // Track joining state for UI feedback
     
     function handleCreateGame(): void {
-      if (playerNameInput) {
-        createGame(playerNameInput);
+      if (createPlayerNameInput) {
+        createGame(createPlayerNameInput);
       } else {
         alert('Please enter your name');
       }
     }
     
     function handleJoinGame(): void {
-      if (gameIdInput && playerNameInput) {
-        joinGame(gameIdInput, playerNameInput);
+      if (gameIdInput && joinPlayerNameInput) {
+        isJoining = true;
+        joinGame(gameIdInput, joinPlayerNameInput);
+        
+        // Reset joining state after a short delay if no response
+        setTimeout(() => {
+          isJoining = false;
+        }, 5000);
       } else {
         alert('Please enter your name and game ID');
       }
@@ -34,6 +42,18 @@
         player2: player2?.name || $opponentName
       };
     }
+    
+    // Clear error when user makes changes to inputs
+    function clearError() {
+      if ($error) {
+        error.set(null);
+      }
+    }
+    
+    // Reset joining state if error occurs or successful join
+    $: if ($error || $gameId) {
+      isJoining = false;
+    }
   </script>
   
   <main>
@@ -42,6 +62,7 @@
     {#if $error}
       <div class="error">
         <p>{$error}</p>
+        <button class="dismiss-error" on:click={() => error.set(null)}>✕</button>
       </div>
     {/if}
   
@@ -52,10 +73,11 @@
           <div class="option-content">
             <input 
               type="text" 
-              id="playerName"
-              bind:value={playerNameInput} 
+              id="createPlayerName"
+              bind:value={createPlayerNameInput} 
               placeholder="Your Name"
               class="name-input"
+              on:input={clearError}
             />
             <button class="primary-button" on:click={handleCreateGame}>
               <span class="icon">+</span>
@@ -76,16 +98,27 @@
               bind:value={gameIdInput} 
               placeholder="Game ID"
               class="code-input"
+              on:input={clearError}
             />
             <input 
               type="text" 
-              bind:value={playerNameInput} 
+              bind:value={joinPlayerNameInput} 
               placeholder="Your Name"
               class="name-input"
+              on:input={clearError}
             />
-            <button class="secondary-button" on:click={handleJoinGame}>
-              <span class="icon">→</span>
-              Join Game
+            <button 
+              class="secondary-button" 
+              on:click={handleJoinGame} 
+              disabled={isJoining}
+            >
+              {#if isJoining}
+                <span class="loading-spinner"></span>
+                Joining...
+              {:else}
+                <span class="icon">→</span>
+                Join Game
+              {/if}
             </button>
           </div>
         </div>
@@ -146,6 +179,18 @@
       --color-emerald-800: #065f46;
       --color-emerald-900: #064e3b;
       --color-emerald-950: #022c22;
+      
+      --color-red-50: #fef2f2;
+      --color-red-100: #fee2e2;
+      --color-red-200: #fecaca;
+      --color-red-300: #fca5a5;
+      --color-red-400: #f87171;
+      --color-red-500: #ef4444;
+      --color-red-600: #dc2626;
+      --color-red-700: #b91c1c;
+      --color-red-800: #991b1b;
+      --color-red-900: #7f1d1d;
+      --color-red-950: #450a0a;
     }
     
     main {
@@ -173,12 +218,45 @@
     }
   
     .error {
-      background-color: #fff0f0;
-      color: #ff3b30;
-      padding: 0.75rem;
+      background-color: var(--color-red-50);
+      color: var(--color-red-700);
+      padding: 0.75rem 1rem;
       margin-bottom: 1.5rem;
       border-radius: 10px;
       font-size: 0.9rem;
+      border: 1px solid var(--color-red-200);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      animation: slideDown 0.3s ease-out;
+    }
+    
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .dismiss-error {
+      background: none;
+      border: none;
+      color: var(--color-red-500);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.2rem;
+      margin-left: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .dismiss-error:hover {
+      color: var(--color-red-700);
     }
     
     .game-options {
@@ -289,9 +367,27 @@
       gap: 0.5rem;
     }
     
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    
     .icon {
       font-size: 1.2rem;
       font-weight: 600;
+    }
+    
+    .loading-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
     
     .primary-button {
@@ -300,7 +396,7 @@
       margin-top: auto;
     }
     
-    .primary-button:hover {
+    .primary-button:hover:not(:disabled) {
       background-color: var(--color-blue-600);
     }
     
@@ -310,7 +406,7 @@
       margin-top: auto;
     }
     
-    .secondary-button:hover {
+    .secondary-button:hover:not(:disabled) {
       background-color: var(--color-emerald-600);
     }
     

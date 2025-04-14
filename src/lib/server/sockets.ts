@@ -81,20 +81,32 @@ export function setupSocketHandlers(io: Server): void {
       const game = games[data.gameId];
       
       if (!game) {
-        socket.emit('error', { message: 'Game not found' });
+        socket.emit('error', { message: 'Game not found. Please check the Game ID and try again.' });
         return;
       }
       
+      // Check if the game is already full (has 2 players)
       if (game.players.length >= 2) {
-        socket.emit('error', { message: 'Game is full' });
+        socket.emit('error', { message: 'This game already has 2 players and cannot accept more participants.' });
+        return;
+      }
+      
+      // Check if the game is in a state where joining is allowed
+      if (game.status !== 'waiting') {
+        socket.emit('error', { message: 'Cannot join game - it has already started or finished.' });
         return;
       }
 
       const playerName = data.playerName || 'Player O';
+      
+      // Add the player to the game
       game.players.push({ id: socket.id, symbol: 'O', name: playerName });
       game.status = 'playing';
       
+      // Join the socket room for this game
       socket.join(data.gameId);
+      
+      // Notify the joining player
       socket.emit('gameJoined', { 
         gameId: data.gameId, 
         playerId: socket.id, 
@@ -110,6 +122,10 @@ export function setupSocketHandlers(io: Server): void {
           players: game.players
         }
       });
+      
+      // Log for server monitoring
+      console.log(`Player ${socket.id} (${playerName}) joined game ${data.gameId}`);
+      console.log(`Game ${data.gameId} now has ${game.players.length} players`);
     });
 
     // Handle player moves
@@ -117,6 +133,13 @@ export function setupSocketHandlers(io: Server): void {
       const game = games[gameId];
       
       if (!game || game.status !== 'playing' || game.currentTurn !== symbol || game.board[index] !== null) {
+        return;
+      }
+      
+      // Ensure the player making the move is actually in this game
+      const playerInGame = game.players.some(player => player.id === socket.id);
+      if (!playerInGame) {
+        socket.emit('error', { message: 'You are not authorized to make moves in this game.' });
         return;
       }
       
