@@ -68,6 +68,7 @@ export const gameStatus: Writable<GameStatus> = writable('waiting');
 export const currentTurn: Writable<'X' | 'O' | null> = writable(null);
 export const winner: Writable<CellValue> = writable(null);
 export const error: Writable<string | null> = writable(null);
+export const players: Writable<Player[]> = writable([]);
 
 // Initialize socket connection with explicit URL
 // This ensures we connect to the right socket.io endpoint
@@ -84,6 +85,14 @@ socket.on('gameCreated', (data: GameCreatedEvent) => {
   board.set(Array(9).fill(null));
   gameStatus.set('waiting');
   error.set(null);
+  
+  // Store playerId in localStorage
+  localStorage.setItem('playerId', data.playerId);
+  
+  // Initialize players array with the current player
+  players.set([
+    { id: data.playerId, symbol: data.symbol, name: data.playerName }
+  ]);
 });
 
 socket.on('gameJoined', (data: GameJoinedEvent) => {
@@ -92,17 +101,14 @@ socket.on('gameJoined', (data: GameJoinedEvent) => {
   playerSymbol.set(data.symbol);
   board.set(data.board);
   
-  // Set player and opponent names
-  const currentPlayer = data.players.find(p => p.id === data.playerId);
-  const opponent = data.players.find(p => p.id !== data.playerId);
+  // Store playerId in localStorage
+  localStorage.setItem('playerId', data.playerId);
   
-  if (currentPlayer) {
-    playerName.set(currentPlayer.name);
-  }
+  // Update players store with all players
+  players.set(data.players);
   
-  if (opponent) {
-    opponentName.set(opponent.name);
-  }
+  // Set player and opponent names based on the current player ID
+  updatePlayerNames(data.playerId, data.players);
   
   error.set(null);
 });
@@ -111,14 +117,39 @@ socket.on('gameStarted', (data: GameStartedEvent) => {
   gameStatus.set('playing');
   currentTurn.set(data.game.currentTurn);
   
-  // Update opponent name if the game has started
-  const myPlayerId = localStorage.getItem('playerId') || '';
-  const opponent = data.game.players.find(p => p.id !== myPlayerId);
+  // Update the players store
+  players.set(data.game.players);
   
-  if (opponent) {
-    opponentName.set(opponent.name || 'Opponent');
+  // Get current player ID from store or localStorage
+  let currentPlayerId: string | null = null;
+  playerId.subscribe(value => {
+    currentPlayerId = value;
+  })();
+  
+  if (!currentPlayerId) {
+    currentPlayerId = localStorage.getItem('playerId');
+  }
+  
+  if (currentPlayerId) {
+    // Update player and opponent names
+    updatePlayerNames(currentPlayerId, data.game.players);
   }
 });
+
+// Helper function to update player and opponent names
+function updatePlayerNames(currentPlayerId: string, gamePlayers: Player[]) {
+  const currentPlayer = gamePlayers.find(p => p.id === currentPlayerId);
+  const opponent = gamePlayers.find(p => p.id !== currentPlayerId);
+  
+  if (currentPlayer) {
+    playerName.set(currentPlayer.name);
+    playerSymbol.set(currentPlayer.symbol);
+  }
+  
+  if (opponent) {
+    opponentName.set(opponent.name);
+  }
+}
 
 socket.on('boardUpdated', (data: BoardUpdatedEvent) => {
   board.set(data.board);
@@ -143,18 +174,10 @@ socket.on('error', (data: ErrorEvent) => {
 // Game actions
 export function createGame(name: string): void {
   socket.emit('createGame', { playerName: name || 'Player' });
-  // Save player ID to localStorage to identify the player later
-  socket.on('connect', () => {
-    localStorage.setItem('playerId', socket.id || '');
-  });
 }
 
 export function joinGame(id: string, name: string): void {
   socket.emit('joinGame', { gameId: id, playerName: name || 'Player' });
-  // Save player ID to localStorage to identify the player later
-  socket.on('connect', () => {
-    localStorage.setItem('playerId', socket.id || '');
-  });
 }
 
 export function makeMove(index: number): void {
